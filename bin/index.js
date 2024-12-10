@@ -2,114 +2,81 @@
 
 const fs = require("fs");
 const path = require("path");
-const yargs = require("yargs/yargs");
+const yargs = require("yargs");
 
-// 默认模板文件夹路径：包中的默认模板文件夹
-const DEFAULT_TEMPLATES_DIR = path.resolve(process.cwd(), "src", ".mdgen-templates");
+// 获取默认模板目录（全局包内路径）
+const defaultTemplateDir = path.join(__dirname, "../templates");
 
-// VuePress MD Template 包内的默认模板文件夹
-const PACKAGE_TEMPLATES_DIR = path.resolve(__dirname,"../","templates");
+// 项目根目录的默认模板路径
+const projectTemplateDir = path.resolve(process.cwd(), "src/.mdgen-templates") || path.resolve(process.cwd(), "docs/.mdgen-templates");
 
-// 获取命令行参数
-const argv = yargs(process.argv.slice(2))
-  .option("templates", {
-    alias: "t",
-    type: "string",
-    description: "Path to custom templates directory",
-  })
-  .help()
-  .argv;
+// 用户可配置的全局模板路径
+const userTemplateDir = process.env.VUEPRESS_MDGEN_TEMPLATES || path.resolve(require("os").homedir(), ".mdgen-templates");
 
-// 获取模板文件夹路径：先检查命令行参数，若没有，再检查环境变量，最后使用默认模板文件夹
-let TEMPLATES_DIR =
-  argv.templates ||
-  process.env.TEMPLATES_DIR ||
-  DEFAULT_TEMPLATES_DIR;
-
-// 如果以上都找不到，则使用包内的默认模板文件夹
-if (!fs.existsSync(TEMPLATES_DIR)) {
-  console.log(`Using default templates folder from package: ${PACKAGE_TEMPLATES_DIR}`);
-  TEMPLATES_DIR = PACKAGE_TEMPLATES_DIR;
-}
-
-// 加载模板配置
-const loadTemplates = () => {
-  const templates = {};
-  const configPath = path.join(TEMPLATES_DIR, "config.json");
-
+// 加载配置文件
+const loadConfig = (templateName) => {
+  const configPath = path.resolve(projectTemplateDir, "config.json");
   if (fs.existsSync(configPath)) {
-    Object.assign(templates, JSON.parse(fs.readFileSync(configPath, "utf8")));
-  } else {
-    console.error(`Config file not found in: ${TEMPLATES_DIR}`);
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    if (templateName && config[templateName]) {
+      return config[templateName];
+    }
+    return config.default || {};
+  }
+  return {};
+};
+
+// 查找模板路径
+const resolveTemplateDir = () => {
+  if (fs.existsSync(projectTemplateDir)) return projectTemplateDir;
+  if (fs.existsSync(userTemplateDir)) return userTemplateDir;
+  return defaultTemplateDir;
+};
+
+// 创建 Markdown 文件
+const createMarkdownFile = (filename, templateName) => {
+  const templateDir = resolveTemplateDir();
+  const config = loadConfig(templateName);
+  const templateFile = config.template
+    ? path.resolve(templateDir, config.template)
+    : path.resolve(templateDir, `${templateName || "default"}.md`);
+
+  if (!fs.existsSync(templateFile)) {
+    console.error(`Template file not found: ${templateFile}`);
     process.exit(1);
   }
 
-  return templates;
+  const targetDir = config.directory || "./src";
+  const targetFile = path.resolve(process.cwd(), targetDir, `${filename}.md`);
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const content = fs.readFileSync(templateFile, "utf-8");
+  fs.writeFileSync(targetFile, content, "utf-8");
+  console.log(`Markdown file created at: ${targetFile}`);
 };
 
-const templates = loadTemplates();
-
-// 获取当前日期时间
-const getCurrentDate = () => {
-  const now = new Date();
-  return now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0];
-};
-
-// 命令行参数
-const args = argv._;
-if (args.length < 1) {
-  console.error("Usage: mdgen <filename> [template]");
-  process.exit(1);
-}
-
-const [fileName, template = "default"] = args; // 默认模板为 "default"
-
-// 查找模板配置
-const templateConfig = templates[template] || templates["default"];
-
-// 获取模板文件路径
-const templateFileName = templateConfig.template || "default.md";
-
-// 获取模板配置
-const { directory: dir, categories } = templates[template];
-
-// 确定模板路径
-const templatePath = path.join(TEMPLATES_DIR, templateFileName);
-
-// 检查模板文件是否存在
-if (!fs.existsSync(templatePath)) {
-  console.error(`Template file "${template}.md" not found in ${TEMPLATES_DIR}`);
-  process.exit(1);
-}
-
-// 目标文件路径
-const outputDir = dir || process.cwd(); // 如果目录未配置，默认为当前工作目录
-const outputPath = path.join(outputDir, `${fileName}.md`);
-
-// 确保目标目录存在
-fs.mkdirSync(outputDir, { recursive: true });
-
-// 读取模板内容
-let templateContent = fs.readFileSync(templatePath, "utf8");
-
-// 动态变量替换
-const replacements = {
-  title: fileName.replace(/-/g, " "), // 使用文件名生成标题，替换 "-" 为空格
-  date: getCurrentDate(),
-  categories,
-};
-
-Object.entries(replacements).forEach(([key, value]) => {
-  const regex = new RegExp(`{{\\s*${key}\\s*}}`, "g");
-  templateContent = templateContent.replace(regex, value);
-});
-
-// 写入目标文件
-if (fs.existsSync(outputPath)) {
-  console.error(`File "${outputPath}" already exists. Use a different name.`);
-  process.exit(1);
-}
-
-fs.writeFileSync(outputPath, templateContent);
-
-console.log(`Markdown file generated: ${outputPath}`);
+// 解析命令行参数
+yargs(process.argv.slice(2))
+  .command(
+    "$0 <filename> [template]",
+    "Generate a markdown file using the specified template",
+    (yargs) => {
+      yargs
+        .positional("filename", {
+          describe: "The name of the markdown file to create",
+          type: "string",
+        })
+        .positional("template", {
+          describe: "The name of the template to use",
+          type: "string",
+        });
+    },
+    (argv) => {
+      createMarkdownFile(argv.filename, argv.template);
+    }
+  )
+  .help()
+  .argv;
