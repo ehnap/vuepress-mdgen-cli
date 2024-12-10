@@ -1,0 +1,31 @@
+{
+  "name": "vuepress-mdgen-cli",
+  "version": "1.0.0",
+  "description": "A CLI tool to generate Markdown files for VuePress2 documentation.",
+  "main": "index.js",
+  "bin": {
+    "mdgen": "./bin/index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "vuepress",
+    "markdown",
+    "template",
+    "documentation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ehnap/vuepress-mdgen-cli.git"
+  },
+  "author": "Ehnap",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ehnap/vuepress-mdgen-cli/issues"
+  },
+  "homepage": "https://github.com/ehnap/vuepress-mdgen-cli#readme",
+  "dependencies": {
+    "yargs": "^15.3.1"
+  }
+}
