@@ -46,15 +46,41 @@ const createMarkdownFile = (filename, templateName) => {
     process.exit(1);
   }
 
-  const targetDir = config.directory || "./src";
-  const targetFile = path.resolve(process.cwd(), targetDir, `${filename}.md`);
+  const targetDir = path.resolve(process.cwd(), config.directory || "./src");
+  const targetFile = path.resolve(targetDir, `${filename}.md`);
 
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
-  const content = fs.readFileSync(templateFile, "utf-8");
-  fs.writeFileSync(targetFile, content, "utf-8");
+  // 读取模板内容
+  let templateContent = fs.readFileSync(templateFile, "utf-8");
+
+  // 获取当前日期时间
+  const getCurrentDate = () => {
+    const now = new Date();
+    return now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0];
+  };
+
+  // 动态变量替换
+  const replacements = {
+    title: filename.replace(/-/g, " "), // 使用文件名生成标题，替换 "-" 为空格
+    date: getCurrentDate(),
+    categories: config.categories || "General", // 使用模板配置的类别
+  };
+
+  Object.entries(replacements).forEach(([key, value]) => {
+    const regex = new RegExp(`{{\\s*${key}\\s*}}`, "g");
+    templateContent = templateContent.replace(regex, value);
+  });
+
+  // 写入目标文件
+  if (fs.existsSync(targetFile)) {
+    console.error(`File "${targetFile}" already exists. Use a different name.`);
+    process.exit(1);
+  }
+
+  fs.writeFileSync(targetFile, templateContent, "utf-8");
   console.log(`Markdown file created at: ${targetFile}`);
 };
 
